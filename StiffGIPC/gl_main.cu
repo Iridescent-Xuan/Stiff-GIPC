@@ -864,6 +864,233 @@ void set_case2()
     total_steps = 150;
 }
 
+void set_case3()
+{
+    ipc.pcg_data.P_type = 1;
+
+    gipc::SimpleSceneImporter importer;
+
+    using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
+    Transform t     = Transform::Identity();
+    t.translate(Eigen::Vector3d{0, -0.5, 0});
+    t.scale(0.49);
+    Eigen::Matrix4d transform = t.matrix();
+
+    string mesh_path = assets_dir + "tetMesh/sphere3K.msh";
+    importer.load_geometry(
+        tetMesh, 3, gipc::BodyType::ABD, transform, 1e8, mesh_path, ipc.pcg_data.P_type);
+
+    t = Transform::Identity();
+    t.translate(Eigen::Vector3d{0, 0.05, 0});
+    t.scale(2.0);
+    transform = t.matrix();
+
+    mesh_path = assets_dir + "triMesh/cloth_174K.obj";
+    importer.load_geometry(
+        tetMesh, 2, gipc::BodyType::FEM, transform, 1e4, mesh_path, ipc.pcg_data.P_type);
+
+    total_steps           = 60;
+    ipc.clothYoungModulus = 1e6;  // NOTE: must be set in parameterSetting.txt
+}
+
+void set_case4()
+{
+    ipc.pcg_data.P_type = 1;
+
+    gipc::SimpleSceneImporter importer;
+
+    using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
+
+    // snow
+    {
+        double          scale = 0.05;
+        Eigen::Vector3d position_offset{-2.0, 2.0, 0.5};
+        Transform       t = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        Eigen::Matrix4d transform = t.matrix();
+
+        double Youngth_Modulus = 1e8;
+        string mesh_path       = assets_dir + "tetMesh/xmas/snow_flake1.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {0.0, 7.0, -1.3};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/snow_flake1.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {0.4, 5.5, 0.2};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/snow_flake2.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {-1.0, 1.3, 1.7};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/snow_flake2.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {-1.2, 6.5, -1.2};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/snow_flake3.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {1.0, 3.5, 1.0};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/snow_flake3.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::ABD,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+    }
+
+    // toys
+    {
+        double          scale = 0.5;
+        Eigen::Vector3d position_offset{1.3, 4.6, -1.3};
+        Transform       t = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        Eigen::Matrix4d transform = t.matrix();
+
+        double Youngth_Modulus = 5e7;
+        string mesh_path       = assets_dir + "tetMesh/xmas/santa.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::FEM,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        position_offset = {1.6, 2.5, 1.5};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        Youngth_Modulus = 5e6;
+        mesh_path       = assets_dir + "tetMesh/xmas/snowman.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::FEM,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        scale           = 0.55;
+        position_offset = {-1.6, 4.0, 0.1};
+        t               = Transform::Identity();
+        t.translate(position_offset);
+        t.scale(scale);
+        transform = t.matrix();
+
+        Youngth_Modulus = 1e7;
+        mesh_path       = assets_dir + "tetMesh/xmas/minion.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::FEM,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+    }
+
+    // xmas tree and ribbon
+    {
+        double          scale = 0.1;
+        Eigen::Vector3d position_offset{0, -0.99, 0};
+        Transform       t = Transform::Identity();
+        t.translate(position_offset);
+        t.rotate(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()));
+        t.scale(scale);
+        Eigen::Matrix4d transform = t.matrix();
+
+        double Youngth_Modulus = 1e8;
+        string mesh_path       = assets_dir + "tetMesh/xmas/christmas_tree.msh";
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::FEM,
+                               transform,
+                               Youngth_Modulus,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+
+        t = Transform::Identity();
+        t.translate(position_offset);
+        t.rotate(Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()));
+        t.scale(scale);
+        transform = t.matrix();
+
+        mesh_path = assets_dir + "tetMesh/xmas/ribbon.obj";
+        importer.load_geometry(tetMesh,
+                               2,
+                               gipc::BodyType::FEM,
+                               transform,
+                               1e4,
+                               mesh_path,
+                               ipc.pcg_data.P_type);
+    }
+
+    // no friction, no USE_FRICTION in CMakeLists.txt
+    total_steps           = 120;
+    ipc.relative_dhat     = 3e-4;
+    ipc.clothYoungModulus = 1e5;
+}
+
 
 void setMAS_partition() {
     tetMesh.partId_map_real.resize(tetMesh.part_offset * BANKSIZE, -1);
@@ -899,7 +1126,7 @@ void initScene()
     ipc.use_new_linear_system = true;
     ipc.pcg_data.P_type       = 1;
 
-    int scene_no = 2;
+    int scene_no = 1;
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!ABD must be loaded before FEM!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -910,6 +1137,12 @@ void initScene()
             break;
         case 2:  // dragon
             set_case2();
+            break;
+        case 3:  // cloth
+            set_case3();
+            break;
+        case 4:  // xmas
+            set_case4();
             break;
     }
 
@@ -1115,6 +1348,77 @@ void initScene()
                               d_tetMesh.o_vertexes,
                               ipc.vertexNum * sizeof(double3),
                               cudaMemcpyDeviceToDevice));
+
+#ifdef USE_QUADRATIC_BENDING
+    // Precompute Q matrices for quadratic bending
+    if(tetMesh.tri_edges.size() > 0)
+    {
+        printf("Precomputing Q matrices for quadratic bending (%zu edges)...\n",
+               tetMesh.tri_edges.size());
+
+        // Allocate host memory for Q matrices
+        std::vector<Eigen::Matrix4d> Q_host(tetMesh.tri_edges.size());
+
+        // Download rest positions, edges, and adjacency from device
+        std::vector<double3> rest_verts_host(ipc.vertexNum);
+        CUDA_SAFE_CALL(cudaMemcpy(rest_verts_host.data(),
+                                  d_tetMesh.rest_vertexes,
+                                  ipc.vertexNum * sizeof(double3),
+                                  cudaMemcpyDeviceToHost));
+
+        // Call precomputation function (defined in femEnergy.cu)
+        PrepareQuadBendingQ(rest_verts_host.data(),
+                            tetMesh.tri_edges.data(),
+                            tetMesh.tri_edges_adj_points.data(),  // CPU端叫tri_edges_adj_points
+                            tetMesh.tri_edges.size(),
+                            Q_host.data());
+
+        // Upload Q matrices to device
+        CUDA_SAFE_CALL(cudaMemcpy(d_tetMesh.quad_bending_Q,
+                                  Q_host.data(),
+                                  tetMesh.tri_edges.size() * sizeof(Eigen::Matrix4d),
+                                  cudaMemcpyHostToDevice));
+
+        printf("Quadratic bending Q matrices uploaded successfully.\n");
+
+        // Optional: Print first Q matrix for verification
+        if(tetMesh.tri_edges.size() > 0)
+        {
+            printf("First Q matrix:\n");
+            for(int i = 0; i < 4; i++)
+            {
+                printf("  [%10.6f %10.6f %10.6f %10.6f]\n",
+                       Q_host[0](i, 0),
+                       Q_host[0](i, 1),
+                       Q_host[0](i, 2),
+                       Q_host[0](i, 3));
+            }
+
+            // Check for NaN or Inf
+            int nan_count = 0;
+            int inf_count = 0;
+            for(size_t i = 0; i < Q_host.size(); i++)
+            {
+                for(int r = 0; r < 4; r++)
+                {
+                    for(int c = 0; c < 4; c++)
+                    {
+                        if(std::isnan(Q_host[i](r, c)))
+                            nan_count++;
+                        if(std::isinf(Q_host[i](r, c)))
+                            inf_count++;
+                    }
+                }
+            }
+            if(nan_count > 0 || inf_count > 0)
+            {
+                printf("WARNING: Q matrices contain %d NaN values and %d Inf values!\n",
+                       nan_count,
+                       inf_count);
+            }
+        }
+    }
+#endif
 
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer);

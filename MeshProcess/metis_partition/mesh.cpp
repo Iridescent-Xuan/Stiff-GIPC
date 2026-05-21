@@ -332,10 +332,11 @@ void TetMesh::_load(const std::string& filename)
                 vector<std::string> elementIndexex;
                 std::string         spacer = " ";
                 _split(line, elementIndexex, spacer);
-                index0 = atoi(elementIndexex[3].c_str()) - 1;
-                index1 = atoi(elementIndexex[4].c_str()) - 1;
-                index2 = atoi(elementIndexex[5].c_str()) - 1;
-                index3 = atoi(elementIndexex[6].c_str()) - 1;
+                int elesize = elementIndexex.size();
+                index0 = atoi(elementIndexex[elesize - 4].c_str()) - 1;
+                index1 = atoi(elementIndexex[elesize - 3].c_str()) - 1;
+                index2 = atoi(elementIndexex[elesize - 2].c_str()) - 1;
+                index3 = atoi(elementIndexex[elesize - 1].c_str()) - 1;
 
                 Vector4i tet;
                 tet.x() = index0 + vertexOffset;

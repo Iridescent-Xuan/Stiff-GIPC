@@ -36,7 +36,7 @@ std::vector<std::string> metis_sort(std::string obj_path, int dimension)
     std::ifstream ifs(out_file_path);
     if(ifs)
     {
-        printf("metis files exist");
+        printf("metis files exist\n");
         ifs.close();
         std::vector<std::string> out_paths;
         std::string sort_part_path = output_folder + mesh_name + "_sorted."

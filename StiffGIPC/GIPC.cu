@@ -7559,6 +7559,66 @@ __global__ void _getBendingEnergy_Reduction(double*        squeue,
     }
 }
 
+#ifdef USE_QUADRATIC_BENDING
+__global__ void _getQuadBendingEnergy_Reduction(double*        squeue,
+                                                const double3* vertexes,
+                                                const double3* rest_vertexes,
+                                                const uint2*   edges,
+                                                const uint2*   edge_adj_vertex,
+                                                const Eigen::Matrix4d* quad_bending_Q,
+                                                int    edgesNum,
+                                                double bendStiff)
+{
+    int idof = blockIdx.x * blockDim.x;
+    int idx  = threadIdx.x + idof;
+
+    extern __shared__ double tep[];
+    int                      numbers = edgesNum;
+    if(idx >= numbers)
+        return;
+
+    uint2  adj  = edge_adj_vertex[idx];
+    double temp = __cal_quad_bending_energy(
+        vertexes, rest_vertexes, edges[idx], adj, quad_bending_Q[idx], bendStiff);
+
+    int    warpTid = threadIdx.x % 32;
+    int    warpId  = (threadIdx.x >> 5);
+    double nextTp;
+    int    warpNum;
+    if(blockIdx.x == gridDim.x - 1)
+    {
+        warpNum = ((numbers - idof + 31) >> 5);
+    }
+    else
+    {
+        warpNum = ((blockDim.x) >> 5);
+    }
+    for(int i = 1; i < 32; i = (i << 1))
+    {
+        temp += __shfl_down_sync(0xffffffff, temp, i);
+    }
+    if(warpTid == 0)
+    {
+        tep[warpId] = temp;
+    }
+    __syncthreads();
+    if(threadIdx.x >= warpNum)
+        return;
+    if(warpNum > 1)
+    {
+        temp = tep[threadIdx.x];
+        for(int i = 1; i < warpNum; i = (i << 1))
+        {
+            temp += __shfl_down_sync(0xffffffff, temp, i);
+        }
+    }
+    if(threadIdx.x == 0)
+    {
+        squeue[blockIdx.x] = temp;
+    }
+}
+#endif
+
 
 __global__ void _getFEMEnergy_Reduction_3D(double*        squeue,
                                            const double3* vertexes,
@@ -9480,6 +9540,41 @@ void calculate_bending_gradient_hessian(const double3* vertexes,
         vertexes, rest_vertexes, edges, edges_adj_vertex, Hessians, Indices, offset, gradient, edgeNum, bendStiff, IPC_dt);
 }
 
+#ifdef USE_QUADRATIC_BENDING
+void calculate_quad_bending_gradient_hessian(const double3* vertexes,
+                                             const double3* rest_vertexex,
+                                             const uint2*   edges,
+                                             const uint2*   edges_adj_vertex,
+                                             const Eigen::Matrix4d* quad_bending_Q,
+                                             double3* gradient,
+                                             int      edgeNum,
+                                             double   bendStiff,
+                                             __GEIGEN__::Matrix12x12d* Hessians,
+                                             uint4*                    Indices,
+                                             const uint32_t&           offset,
+                                             double                    IPC_dt)
+{
+    int numbers = edgeNum;
+    if(numbers < 1)
+        return;
+    const unsigned int threadNum = default_threads;
+    int                blockNum  = (numbers + threadNum - 1) / threadNum;
+    _calculate_quad_bending_gradient_hessian<<<blockNum, threadNum>>>(vertexes,
+                                                                      rest_vertexex,
+                                                                      edges,
+                                                                      edges_adj_vertex,
+                                                                      quad_bending_Q,
+                                                                      gradient,
+                                                                      edgeNum,
+                                                                      bendStiff,
+                                                                      Hessians,
+                                                                      Indices,
+                                                                      offset,
+                                                                      IPC_dt);
+}
+#endif
+
+
 void calculate_fem_gradient(__GEIGEN__::Matrix3x3d* DmInverses,
                             const double3*          vertexes,
                             const uint4*            tetrahedras,
@@ -10063,6 +10158,21 @@ float GIPC::computeGradientAndHessian(device_TetraData& TetMesh)
                                   abd_fem_count_info.fem_tet_num * sizeof(uint4),
                                   cudaMemcpyDeviceToDevice));
 
+#ifdef USE_QUADRATIC_BENDING
+        calculate_quad_bending_gradient_hessian(TetMesh.vertexes,
+                                                TetMesh.rest_vertexes,
+                                                TetMesh.tri_edges,
+                                                TetMesh.tri_edge_adj_vertex,
+                                                TetMesh.quad_bending_Q,
+                                                shape_grads,
+                                                tri_edge_num,
+                                                bendStiff,
+                                                BH.H12x12,
+                                                BH.D4Index,
+                                                h_cpNum[4] + h_cpNum_last[4]
+                                                    + abd_fem_count_info.fem_tet_num,
+                                                IPC_dt);
+#else
         calculate_bending_gradient_hessian(TetMesh.vertexes,
                                            TetMesh.rest_vertexes,
                                            TetMesh.tri_edges,
@@ -10075,6 +10185,7 @@ float GIPC::computeGradientAndHessian(device_TetraData& TetMesh)
                                            tri_edge_num,
                                            bendStiff,
                                            IPC_dt);
+#endif
         //CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
         calculate_triangle_fem_gradient_hessian(TetMesh.triDmInverses,
@@ -10261,6 +10372,17 @@ double GIPC::Energy_Add_Reduction_Algorithm(int type, device_TetraData& TetMesh)
                 queue, TetMesh.vertexes, TetMesh.targetVert, TetMesh.targetIndex, softMotionRate, animation_fullRate, numbers);
             break;
         case 10:
+#ifdef USE_QUADRATIC_BENDING
+            _getQuadBendingEnergy_Reduction<<<blockNum, threadNum, sharedMsize>>>(
+                queue,
+                TetMesh.vertexes,
+                TetMesh.rest_vertexes,
+                TetMesh.tri_edges,
+                TetMesh.tri_edge_adj_vertex,
+                TetMesh.quad_bending_Q,
+                numbers,
+                bendStiff);
+#else
             _getBendingEnergy_Reduction<<<blockNum, threadNum, sharedMsize>>>(
                 queue,
                 TetMesh.vertexes,
@@ -10269,6 +10391,7 @@ double GIPC::Energy_Add_Reduction_Algorithm(int type, device_TetraData& TetMesh)
                 TetMesh.tri_edge_adj_vertex,
                 numbers,
                 bendStiff);
+#endif
             break;
         case 11:
             _getStrain_LimitEnergy_Reduction<<<blockNum, threadNum, sharedMsize>>>(
