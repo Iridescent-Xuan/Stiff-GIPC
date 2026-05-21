@@ -18,16 +18,6 @@ void GIPC::build_gipc_system(device_TetraData& tet)
     m_abd_system->parms.kappa = 1e8;
     m_abd_system->parms.dt    = IPC_dt;
 
-    std::string config_dir = GIPC_ASSETS_DIR "scene/abd_system_config.json";
-
-    gipc::Json json = gipc::Json::parse(std::ifstream(std::string{config_dir}));
-    
-
-    m_abd_system->parms.motor_speed = json["motor_speed"].get<double>();
-    m_abd_system->parms.motor_strength = json["motor_strength"].get<double>();
-    // m_abd_system->parms.init_q_v.segment<3>(0) = Eigen::Vector3d::UnitZ();
-    //m_abd_system->parms.gravity = Eigen::Vector3d::Zero();
-
     std::cout << "- create Contact System ..." << std::endl;
     m_contact_system = std::make_unique<gipc::ContactSystem>(*this);
     std::cout << "    - create Contact Reporter ..." << std::endl;
@@ -71,7 +61,7 @@ void GIPC::create_LinearSystem(device_TetraData& tet)
 
     std::cout << "- create PCG Solver" << std::endl;
     gipc::PCGSolverConfig cfg;
-    cfg.global_tol_rate = 1e-4;
+    cfg.global_tol_rate = pcg_threshold;
     auto& pcg           = m_global_linear_system->create<gipc::PCGSolver>(cfg);
 
     std::cout << "- create Preconditioner" << std::endl;

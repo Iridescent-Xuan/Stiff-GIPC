@@ -11109,7 +11109,7 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
     ttime4 += time4;
 
 
-    std::ofstream outTime("timeCost.txt");
+    std::ofstream outTime(std::string{gipc::output_dir()} + "/timeCost.txt");
 
     outTime << "time0: " << ttime0 / 1000.0 << std::endl;
     outTime << "time1: " << ttime1 / 1000.0 << std::endl;

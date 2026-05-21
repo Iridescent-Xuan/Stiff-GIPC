@@ -50,6 +50,7 @@ vector<string>   obj_pathes;
 int              initPath = 0;
 using namespace std;
 int   step      = 0;
+int   total_steps = 1000;
 int   frameId   = 0;
 int   surfNumId = 0;
 float xRot      = 0.0f;
@@ -617,16 +618,16 @@ void initFEM(tetrahedra_obj& mesh)
 
         //  if((mesh.vertexes[j].y < global_offset + 1))
         {
-            if((mesh.vertexes[j].x) > 0.75 - 1e-4 && (mesh.vertexes[j].y) > 1.75 - 1e-4)
-            {
-                mesh.boundaryTypies[j] = 1;
-                __GEIGEN__::__init_Mat3x3(mesh.constraints[j], 0);
-            }
-            if((mesh.vertexes[j].x) < -0.75 + 1e-4 && (mesh.vertexes[j].y) > 1.75 - 1e-4)
-            {
-                mesh.boundaryTypies[j] = 1;
-                __GEIGEN__::__init_Mat3x3(mesh.constraints[j], 0);
-            }
+            // if((mesh.vertexes[j].x) > 0.75 - 1e-4 && (mesh.vertexes[j].y) > 1.75 - 1e-4)
+            // {
+            //     mesh.boundaryTypies[j] = 1;
+            //     __GEIGEN__::__init_Mat3x3(mesh.constraints[j], 0);
+            // }
+            // if((mesh.vertexes[j].x) < -0.75 + 1e-4 && (mesh.vertexes[j].y) > 1.75 - 1e-4)
+            // {
+            //     mesh.boundaryTypies[j] = 1;
+            //     __GEIGEN__::__init_Mat3x3(mesh.constraints[j], 0);
+            // }
             //if((mesh.vertexes[j].x) > 3 * 0.5 - 1e-4
             //   && ((mesh.vertexes[j].z) < 3 * -0.5 + 1e-4))
             //{
@@ -812,136 +813,55 @@ void LoadSettings()
     }
 }
 
-void set_case1() {
-    double                    dist       = 0.2;
-    int                       count      = 4;
-    int                       count_Y    = 4;
-    double                    fem_height = -0.8;
-    double                    abd_height = -0.6;
-    gipc::SimpleSceneImporter importer;
-
-
-    for(int k = 0; k < count_Y; ++k)
-    {
-        for(int i = 0; i < count; i++)
-        {
-            for(int j = 0; j < count; j++)
-            {
-
-                gipc::Vector2 ij{i, j};
-                gipc::Vector2 pos =
-                    ij * dist - gipc::Vector2::Ones() * dist * (count - 1) / 2.0;
-
-                double3 position_offset =
-                    make_double3(-pos.x(), -abd_height - 2 * dist * k, -pos.y());
-                double          scale     = 0.4;
-                Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
-                transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
-                transform.block<3, 1>(0, 3) = -Eigen::Vector3d(
-                    position_offset.x, position_offset.y, position_offset.z);
-
-                importer.load_geometry(tetMesh,
-                                       3,
-                                       gipc::BodyType::ABD,
-                                       transform,
-                                       1e5,
-                                       assets_dir + "tetMesh/cube.msh",
-                                       ipc.pcg_data.P_type);
-            }
-        }
-    }
-
-    for(int k = 0; k < count_Y; ++k)
-    {
-        for(int i = 0; i < count; i++)
-        {
-            for(int j = 0; j < count; j++)
-            {
-
-                gipc::Vector2 ij{i, j};
-                gipc::Vector2 pos =
-                    ij * dist - gipc::Vector2::Ones() * dist * (count - 1) / 2.0;
-
-                double3 position_offset =
-                    make_double3(-pos.x(), -fem_height - 2 * dist * k, -pos.y());
-                double          scale     = 0.4;
-                Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
-                transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
-                transform.block<3, 1>(0, 3) = -Eigen::Vector3d(
-                    position_offset.x, position_offset.y, position_offset.z);
-
-                importer.load_geometry(tetMesh,
-                                       3,
-                                       gipc::BodyType::FEM,
-                                       transform,
-                                       1e5,
-                                       assets_dir + "tetMesh/cube.msh",
-                                       ipc.pcg_data.P_type);
-            }
-        }
-    }
-}
-
-
-void set_case2()
+void set_case1()
 {
+    ipc.pcg_data.P_type = 1;
+
     gipc::SimpleSceneImporter importer;
-    double                    scale           = 0.2;
-    double3                   position_offset = make_double3(0, -0.5, 0);
+    double                    scale           = 1;
+    double3                   position_offset = make_double3(0, 0, 0);
     Eigen::Matrix4d           transform       = Eigen::Matrix4d::Identity();
     transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
     transform.block<3, 1>(0, 3) =
-        -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
+        Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
 
-
-    string mesh0_path = assets_dir + "tetMesh/bunny2.msh";
-    importer.load_geometry(tetMesh,
-                           3,
-                           gipc::BodyType::ABD,
-                           transform,
-                           1e4,
-                           mesh0_path,
-                           ipc.pcg_data.P_type);
-
-    position_offset             = make_double3(0, 0.65, 0);
-    transform                   = Eigen::Matrix4d::Identity();
-    transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
-    transform.block<3, 1>(0, 3) =
-        -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
-
-    string mesh1_path = mesh0_path;
+    double YoungsModulus = 1e7;
+    string mesh_path     = assets_dir + "tetMesh/squishy_ball_61K.msh";
     importer.load_geometry(tetMesh,
                            3,
                            gipc::BodyType::FEM,
                            transform,
-                           1e5,
-                           mesh1_path,
+                           YoungsModulus,
+                           mesh_path,
                            ipc.pcg_data.P_type);
 
-
-    position_offset             = make_double3(0, 0, 0);
-    transform                   = Eigen::Matrix4d::Identity();
-    transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * 1.0;
-    transform.block<3, 1>(0, 3) =
-        -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
-    string mesh2_path = assets_dir + "triMesh/cloth_high.obj";
-    
-    importer.load_geometry(tetMesh,
-                           2,
-                           gipc::BodyType::FEM,
-                           transform,
-                           1e4,
-                           mesh2_path,
-                           ipc.pcg_data.P_type);
+    total_steps = 100;
 }
 
-void set_case3()
+void set_case2()
 {
+    ipc.pcg_data.P_type = 1;
 
-    gipc::SimpleSceneImporter importer{assets_dir + "scene/json/wrecking-ball-simple.json",
-                                       assets_dir + "tetMesh/wrecking-ball-mesh/",
-                                       gipc::BodyType::ABD};
-    importer.import_scene(tetMesh);
+    gipc::SimpleSceneImporter importer;
+
+    using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
+    Transform t     = Transform::Identity();
+    t.translate(Eigen::Vector3d{0, 0, 0});
+    t.scale(0.1);
+    Eigen::Matrix4d transform = t.matrix();
+
+    double Youngth_Modulus = 3e5;
+    string mesh_path       = assets_dir + "tetMesh/dragon_50K.msh";
+    importer.load_geometry(tetMesh,
+                           3,
+                           gipc::BodyType::FEM,
+                           transform,
+                           Youngth_Modulus,
+                           mesh_path,
+                           ipc.pcg_data.P_type);
+
+    ipc.IPC_dt  = 1e-2;
+    total_steps = 150;
 }
 
 
@@ -985,14 +905,11 @@ void initScene()
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     switch(scene_no)
     {
-        case 0:  // box pipe
+        case 1:  // squishy ball
             set_case1();
             break;
-        case 1:  // soft-rigid-cloth coupling
+        case 2:  // dragon
             set_case2();
-            break;
-        case 2:  //wrecking ball case
-            set_case3();
             break;
     }
 
@@ -1542,7 +1459,7 @@ void SpecialKey(GLint key, GLint x, GLint y)
 }
 
 
-int main(int argc, char** argv)
+int main2(int argc, char** argv)
 {
     glutInit(&argc, argv);
     //glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
@@ -1578,4 +1495,61 @@ int main(int argc, char** argv)
 
     glutMainLoop();
     //return 0;
+}
+
+
+int main()
+{
+    stop        = false;
+    saveSurface = true;
+
+    Init_CUDA();
+
+    LoadSettings();
+
+    ipc.build_gipc_system(d_tetMesh);
+
+    initScene();
+
+    auto output_path = std::string{gipc::output_dir()} + "saveSurface/";
+    if(std::filesystem::exists(output_path))
+    {
+        // delete previous files
+        std::filesystem::remove_all(output_path);
+        std::filesystem::create_directories(output_path);
+    }
+    else
+    {
+        std::filesystem::create_directories(output_path);
+    }
+
+    if(saveSurface)
+    {
+        saveSurfaceMesh(output_path + "surf_");
+    }
+
+    while(true)
+    {
+        ipc.IPC_Solver(d_tetMesh);
+
+        CUDA_SAFE_CALL(cudaMemcpy(tetMesh.vertexes.data(),
+                                  ipc._vertexes,
+                                  ipc.vertexNum * sizeof(double3),
+                                  cudaMemcpyDeviceToHost));
+
+        step++;
+
+        if(saveSurface)
+        {
+            saveSurfaceMesh(output_path + "surf_");
+        }
+
+        if(step == total_steps)
+        {
+            std::cout << "step: " << step << " finished." << std::endl;
+            break;
+        }
+    }
+
+    return 0;
 }
