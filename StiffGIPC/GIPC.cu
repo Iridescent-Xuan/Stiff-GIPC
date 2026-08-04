@@ -11261,6 +11261,13 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
     cudaEventElapsedTime(&tttime, start, end0);
     totalTime += tttime;
     total_Frames++;
+    std::cout << std::fixed << std::setprecision(3) << "[TIME ] Frame " << total_Frames
+              << " | time0=" << time0 << " ms"
+              << " | time1=" << time1 << " ms"
+              << " | time2=" << time2 << " ms"
+              << " | time3=" << time3 << " ms"
+              << " | time4=" << time4 << " ms" << std::defaultfloat
+              << std::setprecision(6) << std::endl;
     std::cout << std::fixed << std::setprecision(3) << "[SOLVE] Frame " << total_Frames
               << " | average " << totalTime / totalNT << " ms/iteration"
               << std::defaultfloat << std::setprecision(6) << std::endl;

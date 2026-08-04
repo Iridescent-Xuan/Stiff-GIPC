@@ -12,10 +12,12 @@
 #endif
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <streambuf>
 #include <cuda_runtime.h>
 #include <map>
 // #include "GIPC.cuh"
@@ -43,6 +45,7 @@
 int num_frames  = 1000;
 int scene_no    = 6;
 int cuda_device = 0;
+int pcg_preconditioner_type = 1;
 
 auto             assets_dir = std::string{gipc::assets_dir()};
 std::string      metis_dir  = assets_dir + "sorted_mesh/";
@@ -836,7 +839,6 @@ void set_case1()
 
 void set_case2()
 {
-    ipc.pcg_data.P_type = 1;
     gipc::SimpleSceneImporter importer;
     double                    scale           = 0.2;
     double3                   position_offset = make_double3(0, -0.5, 0);
@@ -900,7 +902,6 @@ void set_case3()
 
 void set_case4()
 {
-    ipc.pcg_data.P_type = 0;
     linear_system_buff_scale = 1.0;
     gipc::SimpleSceneImporter importer;
     double                    scale           = 0.6;
@@ -941,7 +942,6 @@ void set_case4()
 
 void set_case5()
 {
-    ipc.pcg_data.P_type = 1;
     linear_system_buff_scale = 2.0;
     gipc::SimpleSceneImporter importer;
     double                    scale = 1.0;
@@ -1013,7 +1013,6 @@ void set_case5()
 void set_case6()
 {
     linear_system_buff_scale = 2.0;
-    ipc.pcg_data.P_type = 1;
     double scale      = 0.3;
     double dist       = scale / 2;
     int    count      = 8;
@@ -1101,18 +1100,19 @@ void set_case6()
 
 void set_case7()
 {
-    ipc.pcg_data.P_type      = 1;
     linear_system_buff_scale = 1.0;
+    const double angular_velocity_y = 2.0 * FEM::PI;
 
     gipc::SimpleSceneImporter importer;
 
     using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
     Transform t     = Transform::Identity();
-    t.scale(1.0);
+    t.scale(0.2);
     Eigen::Matrix4d transform = t.matrix();
 
     std::string mesh_path       = assets_dir + "tetMesh/bunny2.msh";
     double      Youngth_Modulus = 1e6;
+    const size_t vertex_begin   = tetMesh.vertexes.size();
     importer.load_geometry(tetMesh,
                            3,
                            gipc::BodyType::FEM,
@@ -1122,7 +1122,44 @@ void set_case7()
                            ipc.pcg_data.P_type,
                            BodyBoundaryType::Free);
 
-    num_frames = 100;
+    double3 model_center = make_double3(0.0, 0.0, 0.0);
+    const size_t vertex_end = tetMesh.vertexes.size();
+    if(vertex_end == vertex_begin)
+    {
+        std::cerr << "[ERROR] Scene 6 mesh contains no vertices" << std::endl;
+        terminate_process(EXIT_FAILURE);
+    }
+    for(size_t i = vertex_begin; i < vertex_end; ++i)
+    {
+        model_center.x += tetMesh.vertexes[i].x;
+        model_center.y += tetMesh.vertexes[i].y;
+        model_center.z += tetMesh.vertexes[i].z;
+    }
+
+    const double vertex_count = static_cast<double>(vertex_end - vertex_begin);
+    model_center.x /= vertex_count;
+    model_center.y /= vertex_count;
+    model_center.z /= vertex_count;
+
+    double max_initial_speed = 0.0;
+    for(size_t i = vertex_begin; i < vertex_end; ++i)
+    {
+        const double relative_x = tetMesh.vertexes[i].x - model_center.x;
+        const double relative_z = tetMesh.vertexes[i].z - model_center.z;
+        tetMesh.velocities[i] = make_double3(angular_velocity_y * relative_z,
+                                             0.0,
+                                             -angular_velocity_y * relative_x);
+        max_initial_speed =
+            std::max(max_initial_speed,
+                     std::hypot(tetMesh.velocities[i].x, tetMesh.velocities[i].z));
+    }
+
+    std::cout << "[INIT ] Initial rotation: axis=+Y, angular_velocity="
+              << angular_velocity_y << " rad/s, center=(" << model_center.x << ", "
+              << model_center.y << ", " << model_center.z
+              << "), max_speed=" << max_initial_speed << std::endl;
+
+    num_frames = 150;
 }
 
 void setMAS_partition()
@@ -1157,7 +1194,9 @@ void setMAS_partition()
 void initScene()
 {
     std::filesystem::exists(metis_dir) || std::filesystem::create_directory(metis_dir);
-    ipc.pcg_data.P_type = 1;
+    ipc.pcg_data.P_type = pcg_preconditioner_type;
+    std::cout << "[INIT ] PCG preconditioner: " << ipc.pcg_data.P_type
+              << (ipc.pcg_data.P_type == 1 ? " (MAS)" : " (diagonal)") << std::endl;
 
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!ABD must be loaded before FEM!!!!!!!!!!!!!!!!!!
@@ -1182,7 +1221,7 @@ void initScene()
         case 5:  //box pipe large scale and cloth
             set_case6();
             break;
-        case 6:  // bunny falling on the ground
+        case 6:  // bunny with init rotating velocity
             set_case7();
             break;
         default:
@@ -1849,6 +1888,79 @@ int main(int argc, char** argv)
 #else
 namespace
 {
+class TeeStreamBuffer : public std::streambuf
+{
+  public:
+    TeeStreamBuffer(std::streambuf* terminal, std::streambuf* log)
+        : m_terminal(terminal)
+        , m_log(log)
+    {
+    }
+
+  protected:
+    int overflow(int character) override
+    {
+        if(character == traits_type::eof())
+            return traits_type::not_eof(character);
+
+        const auto value = static_cast<char>(character);
+        const bool terminal_ok = m_terminal->sputc(value) != traits_type::eof();
+        const bool log_ok = m_log->sputc(value) != traits_type::eof();
+        return terminal_ok && log_ok ? character : traits_type::eof();
+    }
+
+    std::streamsize xsputn(const char* text, std::streamsize count) override
+    {
+        const auto terminal_count = m_terminal->sputn(text, count);
+        const auto log_count = m_log->sputn(text, count);
+        return std::min(terminal_count, log_count);
+    }
+
+    int sync() override
+    {
+        return m_terminal->pubsync() == 0 && m_log->pubsync() == 0 ? 0 : -1;
+    }
+
+  private:
+    std::streambuf* m_terminal;
+    std::streambuf* m_log;
+};
+
+class CommandLog
+{
+  public:
+    explicit CommandLog(const std::filesystem::path& path)
+        : m_file(path, std::ios::out | std::ios::trunc)
+        , m_original_cout(std::cout.rdbuf())
+        , m_original_cerr(std::cerr.rdbuf())
+        , m_cout_buffer(m_original_cout, m_file.rdbuf())
+        , m_cerr_buffer(m_original_cerr, m_file.rdbuf())
+    {
+        if(!m_file)
+        {
+            std::cerr << "[ERROR] Cannot open log file: " << path.string() << std::endl;
+            terminate_process(EXIT_FAILURE);
+        }
+        std::cout.rdbuf(&m_cout_buffer);
+        std::cerr.rdbuf(&m_cerr_buffer);
+    }
+
+    ~CommandLog()
+    {
+        std::cout.flush();
+        std::cerr.flush();
+        std::cout.rdbuf(m_original_cout);
+        std::cerr.rdbuf(m_original_cerr);
+    }
+
+  private:
+    std::ofstream   m_file;
+    std::streambuf* m_original_cout;
+    std::streambuf* m_original_cerr;
+    TeeStreamBuffer m_cout_buffer;
+    TeeStreamBuffer m_cerr_buffer;
+};
+
 struct HeadlessOptions
 {
     int  frames            = -1;
@@ -1863,6 +1975,8 @@ void print_usage(const char* program)
               << "  --scene N        Scene number, 0-6 (default: 6)\n"
               << "  --frames N       Number of frames (default: scene setting)\n"
               << "  --device N       CUDA device number (default: 0)\n"
+              << "  --pcg-preconditioner 0|1\n"
+              << "                   0=diagonal, 1=MAS (default: 1)\n"
               << "  --save-surface-mesh 0|1\n"
               << "                   Enable OBJ output (default: 1)\n"
               << "  --save-every N   Save an OBJ every N frames (default: 1)\n"
@@ -1907,7 +2021,8 @@ HeadlessOptions parse_options(int argc, char** argv)
         }
 
         if(option != "--scene" && option != "--frames" && option != "--device"
-           && option != "--save-every" && option != "--save-surface-mesh")
+           && option != "--pcg-preconditioner" && option != "--save-every"
+           && option != "--save-surface-mesh")
         {
             std::cerr << "[ERROR] Unknown option: " << option << std::endl;
             print_usage(argv[0]);
@@ -1932,13 +2047,23 @@ HeadlessOptions parse_options(int argc, char** argv)
             options.frames = value;
         else if(option == "--device")
             cuda_device = value;
+        else if(option == "--pcg-preconditioner")
+        {
+            if(value > 1)
+            {
+                std::cerr << "[ERROR] Invalid value for " << option << ": " << value
+                          << " (expected 0 or 1)" << std::endl;
+                terminate_process(EXIT_FAILURE);
+            }
+            pcg_preconditioner_type = value;
+        }
         else
             options.save_every = value;
     }
     return options;
 }
 
-void prepare_output_directory(const std::filesystem::path& output_dir)
+bool prepare_output_directory(const std::filesystem::path& output_dir)
 {
     auto normalized = std::filesystem::absolute(output_dir).lexically_normal();
     if(normalized.filename().empty())
@@ -1964,10 +2089,7 @@ void prepare_output_directory(const std::filesystem::path& output_dir)
         terminate_process(EXIT_FAILURE);
     }
 
-    std::cout << "[INFO ] Output directory ready: " << normalized.string();
-    if(output_existed)
-        std::cout << " | previous contents cleared";
-    std::cout << std::endl;
+    return output_existed;
 }
 
 void update_animation()
@@ -1993,18 +2115,25 @@ int main(int argc, char** argv)
     const auto output_dir = std::filesystem::path{gipc::output_dir()};
     const auto surface_dir = output_dir / "saveSurface";
 
-    std::cout << "[INFO ] StiffGIPC headless simulator\n"
-              << "[INFO ] Initializing scene " << scene_no << " on CUDA device "
-              << cuda_device << std::endl;
-
     const auto init_begin = std::chrono::steady_clock::now();
     Init_CUDA();
+
+    const bool output_existed = prepare_output_directory(output_dir);
+    CommandLog command_log(output_dir / "run.log");
+
+    std::cout << "[INFO ] StiffGIPC headless simulator\n"
+              << "[INFO ] Initializing scene " << scene_no << " on CUDA device "
+              << cuda_device << " | PCG preconditioner " << pcg_preconditioner_type
+              << "\n[INFO ] Output directory ready: " << output_dir.string();
+    if(output_existed)
+        std::cout << " | previous contents cleared";
+    std::cout << "\n[INFO ] Log file: " << (output_dir / "run.log").string()
+              << std::endl;
 
     cudaDeviceProp device_properties{};
     CUDA_SAFE_CALL(cudaGetDeviceProperties(&device_properties, cuda_device));
     std::cout << "[INFO ] GPU: " << device_properties.name << std::endl;
 
-    prepare_output_directory(output_dir);
     if(save_surface_mesh)
         std::filesystem::create_directories(surface_dir);
 

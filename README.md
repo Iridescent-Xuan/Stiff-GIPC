@@ -90,6 +90,11 @@ to `Output/saveSurface/` by default. Use `--save-surface-mesh 0` to disable mesh
 output and `--save-every N` to change its frequency. The `Output/` directory is
 cleared at the start of every run to prevent stale results from being mixed in;
 timing and solver statistics are also written there.
+Select the PCG preconditioner with `--pcg-preconditioner 0|1`: `0` uses the
+diagonal preconditioner and `1` uses MAS (the default).
+Terminal output is mirrored to `Output/run.log`. Each completed frame includes a
+`[TIME ]` entry containing the `time0` through `time4` CUDA timing segments in
+milliseconds.
 If CUDA architecture auto-detection is unavailable during configuration, pass it
 explicitly, for example `-DCMAKE_CUDA_ARCHITECTURES=89` for an RTX 4090.
 
