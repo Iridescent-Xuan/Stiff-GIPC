@@ -6,9 +6,15 @@
 // Copyright (c) 2024 Kemeng Huang. All rights reserved.
 //
 
+#ifndef GIPC_HEADLESS
 #include "GL/glew.h"
 #include "GL/freeglut.h"
+#endif
+#include <chrono>
+#include <climits>
+#include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <cuda_runtime.h>
 #include <map>
@@ -33,6 +39,10 @@
 #include <thrust/sequence.h>
 #include <thrust/device_ptr.h>
 #include <GIPC.cuh>
+
+int num_frames  = 1000;
+int scene_no    = 6;
+int cuda_device = 0;
 
 auto             assets_dir = std::string{gipc::assets_dir()};
 std::string      metis_dir  = assets_dir + "sorted_mesh/";
@@ -79,6 +89,7 @@ bool stop = true;
 double3 center;
 double3 Ssize;
 
+#ifndef GIPC_HEADLESS
 GLuint PN_vbo_;
 GLuint VAO;
 GLuint color_vbo_;
@@ -88,6 +99,7 @@ GLuint normal_vbo_;
 GLuint v;
 GLuint f;
 GLuint shaderProgram;
+#endif
 
 int            clothFaceOffset = 0;
 int            bodyVertOffset  = 0;
@@ -96,16 +108,31 @@ std::vector<std::string> files;
 std::vector<int>    file_vert_offsets;
 std::vector<int>    file_tet_offsets;
 
+[[noreturn]] void terminate_process(int status)
+{
+    std::cout.flush();
+    std::cerr.flush();
+#ifdef GIPC_HEADLESS
+    // Global CUDA buffers have unsafe static destruction ordering. The OS/CUDA
+    // driver releases their resources after this command-line process exits.
+    std::_Exit(status);
+#else
+    std::exit(status);
+#endif
+}
+
 void Init_CUDA()
 {
-    cudaError_t cudaStatus = cudaSetDevice(0);
+    cudaError_t cudaStatus = cudaSetDevice(cuda_device);
     if(cudaStatus != cudaSuccess)
     {
-        fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-        exit(0);
+        std::cerr << "[ERROR] CUDA device " << cuda_device
+                  << " is unavailable: " << cudaGetErrorString(cudaStatus) << std::endl;
+        terminate_process(EXIT_FAILURE);
     }
 }
 
+#ifndef GIPC_HEADLESS
 #pragma pack(push, 1)
 typedef struct
 {
@@ -189,18 +216,24 @@ void SaveScreenShot(int width, int height, const std::string& file_name)
     WriteBitmapFile(width, height, file_name + ".bmp", (unsigned char*)screen_data);
     free(screen_data);
 }
+#endif
 
-void saveSurfaceMesh(const std::string& path)
+bool saveSurfaceMesh(const std::string& path, int frame = -1)
 {
     std::stringstream ss;
     ss << path;
     ss.fill('0');
     ss.width(5);
-    ss << (surfNumId++) / 1;  // / 10;
+    ss << (frame >= 0 ? frame : surfNumId++);
     //if (surfNumId % 10 != 0) return;
     ss << ".obj";
     std::string file_path = ss.str();
     std::ofstream    outSurf(file_path);
+    if(!outSurf)
+    {
+        std::cerr << "[ERROR] Cannot write surface mesh: " << file_path << std::endl;
+        return false;
+    }
 
     std::map<int, int> meshToSurf;
     outSurf << "s 1" << std::endl;
@@ -218,6 +251,7 @@ void saveSurfaceMesh(const std::string& path)
                 << " " << meshToSurf[tri.z] + 1 << std::endl;
     }
     outSurf.close();
+    return true;
 }
 
 
@@ -261,6 +295,7 @@ void saveTets(const std::string& path)
     }
 }
 
+#ifndef GIPC_HEADLESS
 void draw_box2D(float ox, float oy, float width, float height)
 {
     glLineWidth(2.5f);
@@ -552,6 +587,7 @@ void saveScreenPic(const std::string& path)
 
     SaveScreenShot(window_width, window_height, file_path);
 }
+#endif
 
 void initFEM(tetrahedra_obj& mesh)
 {
@@ -581,7 +617,7 @@ void initFEM(tetrahedra_obj& mesh)
 
     ipc.shearStiff = 0.03 * ipc.stretchStiff * ipc.strainRate;
 
-    printf("ipc.shearStiff: %f\n", ipc.shearStiff);
+    std::cout << "[INIT ] Shear stiffness: " << ipc.shearStiff << std::endl;
 
 
     for(int i = 0; i < mesh.tetrahedraNum; i++)
@@ -639,7 +675,7 @@ void initFEM(tetrahedra_obj& mesh)
     }
 
     mesh.meanMass = massSum / mesh.vertexNum;
-    printf("meanMass: %f\n", mesh.meanMass);
+    std::cout << "[INIT ] Mean vertex mass: " << mesh.meanMass << std::endl;
     mesh.meanVolum = volumeSum / mesh.vertexNum;
 }
 
@@ -719,7 +755,7 @@ void LoadSettings()
 
     if(!successfulRead)
     {
-        std::cerr << "Waning: failed loading settings, set to defaults." << std::endl;
+        std::cerr << "[WARN ] Settings file unavailable; using defaults" << std::endl;
         DefaultSettings();
     }
 }
@@ -900,7 +936,7 @@ void set_case4()
             fixed_vertex_num++;
         }
     }
-    std::cout << "fixed vertex num: " << fixed_vertex_num << std::endl;
+    std::cout << "[INIT ] Fixed vertices: " << fixed_vertex_num << std::endl;
 }
 
 void set_case5()
@@ -944,7 +980,7 @@ void set_case5()
         }
     }
     tetMesh.softNum = tetMesh.targetIndex.size();
-    std::cout << "soft constraint num: " << tetMesh.softNum << std::endl;
+    std::cout << "[INIT ] Soft constraints: " << tetMesh.softNum << std::endl;
     ipc.softMotionRate = 1;
 
     const double angular_vel = 3.14159265358979323846/5;
@@ -1063,6 +1099,32 @@ void set_case6()
     ipc.strainRate    = 1e6;
 }
 
+void set_case7()
+{
+    ipc.pcg_data.P_type      = 1;
+    linear_system_buff_scale = 1.0;
+
+    gipc::SimpleSceneImporter importer;
+
+    using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
+    Transform t     = Transform::Identity();
+    t.scale(1.0);
+    Eigen::Matrix4d transform = t.matrix();
+
+    std::string mesh_path       = assets_dir + "tetMesh/bunny2.msh";
+    double      Youngth_Modulus = 1e6;
+    importer.load_geometry(tetMesh,
+                           3,
+                           gipc::BodyType::FEM,
+                           transform,
+                           Youngth_Modulus,
+                           mesh_path,
+                           ipc.pcg_data.P_type,
+                           BodyBoundaryType::Free);
+
+    num_frames = 100;
+}
+
 void setMAS_partition()
 {
     tetMesh.partId_map_real.resize(tetMesh.part_offset * BANKSIZE, -1);
@@ -1097,7 +1159,6 @@ void initScene()
     std::filesystem::exists(metis_dir) || std::filesystem::create_directory(metis_dir);
     ipc.pcg_data.P_type = 1;
 
-    int scene_no = 1;
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!ABD must be loaded before FEM!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1121,6 +1182,13 @@ void initScene()
         case 5:  //box pipe large scale and cloth
             set_case6();
             break;
+        case 6:  // bunny falling on the ground
+            set_case7();
+            break;
+        default:
+            std::cerr << "[ERROR] Unknown scene: " << scene_no << " (expected 0-6)"
+                      << std::endl;
+            terminate_process(EXIT_FAILURE);
     }
 
 
@@ -1240,7 +1308,8 @@ void initScene()
                               cudaMemcpyHostToDevice));
 
 
-    printf("stretchStiff:  %f,  shearStiff:   %f\n", ipc.stretchStiff, ipc.shearStiff);
+    std::cout << "[INIT ] Stiffness: stretch=" << ipc.stretchStiff
+              << ", shear=" << ipc.shearStiff << std::endl;
 
     ipc.vertexNum      = tetMesh.vertexNum;
     ipc.tetrahedraNum  = tetMesh.tetrahedraNum;
@@ -1265,18 +1334,16 @@ void initScene()
     ipc.softNum            = tetMesh.softNum;
     ipc.abd_fem_count_info = tetMesh.abd_fem_count_info;
 
-    std::cout << "ABD FEM count info: \n"
-              << ipc.abd_fem_count_info << std::endl;
+    std::cout << "[INIT ] Bodies: ABD=" << ipc.abd_fem_count_info.abd_body_num
+              << ", FEM=" << ipc.abd_fem_count_info.fem_body_num << std::endl;
 
 
-    printf("vertNum: %d      tetraNum: %d      faceNum: %d\n",
-           ipc.vertexNum,
-           ipc.tetrahedraNum,
-           ipc.surface_Num);
-    printf("surfVertNum: %d      surfEdgesNum: %d\n", ipc.surf_vertexNum, ipc.edge_Num);
-    printf("maxCollisionPairsNum_CCD: %d      maxCollisionPairsNum: %d\n",
-           ipc.MAX_CCD_COLLITION_PAIRS_NUM,
-           ipc.MAX_COLLITION_PAIRS_NUM);
+    std::cout << "[INIT ] Mesh: vertices=" << ipc.vertexNum
+              << ", tetrahedra=" << ipc.tetrahedraNum << ", faces=" << ipc.surface_Num
+              << ", surface_vertices=" << ipc.surf_vertexNum
+              << ", surface_edges=" << ipc.edge_Num << std::endl;
+    std::cout << "[INIT ] Collision capacity: CCD=" << ipc.MAX_CCD_COLLITION_PAIRS_NUM
+              << ", discrete=" << ipc.MAX_COLLITION_PAIRS_NUM << std::endl;
 
     //ipc.USE_MAS = false;
     ipc.MALLOC_DEVICE_MEM();
@@ -1337,8 +1404,8 @@ void initScene()
     // Precompute Q matrices for quadratic bending
     if(tetMesh.tri_edges.size() > 0)
     {
-        printf("Precomputing Q matrices for quadratic bending (%zu edges)...\n",
-               tetMesh.tri_edges.size());
+        std::cout << "[INIT ] Precomputing quadratic bending matrices for "
+                  << tetMesh.tri_edges.size() << " edges" << std::endl;
 
         // Allocate host memory for Q matrices
         std::vector<Eigen::Matrix4d> Q_host(tetMesh.tri_edges.size());
@@ -1363,11 +1430,12 @@ void initScene()
                                   tetMesh.tri_edges.size() * sizeof(Eigen::Matrix4d),
                                   cudaMemcpyHostToDevice));
 
-        printf("Quadratic bending Q matrices uploaded successfully.\n");
+        std::cout << "[INIT ] Quadratic bending matrices ready" << std::endl;
 
         // Optional: Print first Q matrix for verification
         if(tetMesh.tri_edges.size() > 0)
         {
+#ifndef GIPC_HEADLESS
             printf("First Q matrix:\n");
             for(int i = 0; i < 4; i++)
             {
@@ -1377,6 +1445,7 @@ void initScene()
                        Q_host[0](i, 2),
                        Q_host[0](i, 3));
             }
+#endif
 
             // Check for NaN or Inf
             int nan_count = 0;
@@ -1396,9 +1465,8 @@ void initScene()
             }
             if(nan_count > 0 || inf_count > 0)
             {
-                printf("WARNING: Q matrices contain %d NaN values and %d Inf values!\n",
-                       nan_count,
-                       inf_count);
+                std::cerr << "[WARN ] Quadratic bending matrices contain " << nan_count
+                          << " NaN and " << inf_count << " Inf values" << std::endl;
             }
         }
     }
@@ -1408,16 +1476,12 @@ void initScene()
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer, linear_system_buff_scale);
 
-    printf("bboxDiagSize2: %f\n", ipc.bboxDiagSize2);
-    printf("maxConer: %f  %f   %f           minCorner: %f  %f   %f\n",
-           tetMesh.maxConer.x,
-           tetMesh.maxConer.y,
-           tetMesh.maxConer.z,
-           tetMesh.minConer.x,
-           tetMesh.minConer.y,
-           tetMesh.minConer.z);
-
-    printf("restSNKE: %f\n", ipc.RestNHEnergy);
+    std::cout << "[INIT ] Bounds: min=(" << tetMesh.minConer.x << ", "
+              << tetMesh.minConer.y << ", " << tetMesh.minConer.z << "), max=("
+              << tetMesh.maxConer.x << ", " << tetMesh.maxConer.y << ", "
+              << tetMesh.maxConer.z << "), diagonal_squared=" << ipc.bboxDiagSize2
+              << std::endl;
+    std::cout << "[INIT ] Rest SNK energy: " << ipc.RestNHEnergy << std::endl;
     ipc.buildCP();
 
     ipc._moveDir          = ipc.pcg_data.dx;
@@ -1428,6 +1492,7 @@ void initScene()
 
     ipc.create_LinearSystem(d_tetMesh);
 
+#ifndef GIPC_HEADLESS
     bvs.resize(2 * ipc.edge_Num - 1);
     nodes.resize(2 * ipc.edge_Num - 1);
     //CUDA_SAFE_CALL(cudaDeviceSynchronize());
@@ -1435,6 +1500,7 @@ void initScene()
         &bvs[0], ipc.bvh_e._bvs, (2 * ipc.edge_Num - 1) * sizeof(AABB), cudaMemcpyDeviceToHost));
     CUDA_SAFE_CALL(cudaMemcpy(
         &nodes[0], ipc.bvh_e._nodes, (2 * ipc.edge_Num - 1) * sizeof(Node), cudaMemcpyDeviceToHost));
+#endif
 }
 
 
@@ -1492,6 +1558,7 @@ void outputAnimationMeshInfo(std::string pathCloth, std::string pathBody)
     outSurf2.close();
     surfNumId++;
 }
+#ifndef GIPC_HEADLESS
 bool pri = true;
 void display(void)
 {
@@ -1779,3 +1846,223 @@ int main(int argc, char** argv)
     glutMainLoop();
     //return 0;
 }
+#else
+namespace
+{
+struct HeadlessOptions
+{
+    int  frames            = -1;
+    int  save_every        = 1;
+    bool save_surface_mesh = true;
+};
+
+void print_usage(const char* program)
+{
+    std::cout << "Usage: " << program << " [options]\n\n"
+              << "Options:\n"
+              << "  --scene N        Scene number, 0-6 (default: 6)\n"
+              << "  --frames N       Number of frames (default: scene setting)\n"
+              << "  --device N       CUDA device number (default: 0)\n"
+              << "  --save-surface-mesh 0|1\n"
+              << "                   Enable OBJ output (default: 1)\n"
+              << "  --save-every N   Save an OBJ every N frames (default: 1)\n"
+              << "  -h, --help       Show this help\n";
+}
+
+int parse_nonnegative_int(const char* option, const char* value)
+{
+    char* end = nullptr;
+    long  parsed = std::strtol(value, &end, 10);
+    if(value[0] == '\0' || *end != '\0' || parsed < 0 || parsed > INT_MAX)
+    {
+        std::cerr << "[ERROR] Invalid value for " << option << ": " << value << std::endl;
+        terminate_process(EXIT_FAILURE);
+    }
+    return static_cast<int>(parsed);
+}
+
+bool parse_bool(const char* option, const char* value)
+{
+    std::string parsed = value;
+    if(parsed == "1" || parsed == "true" || parsed == "on")
+        return true;
+    if(parsed == "0" || parsed == "false" || parsed == "off")
+        return false;
+
+    std::cerr << "[ERROR] Invalid value for " << option << ": " << value
+              << " (expected 0 or 1)" << std::endl;
+    terminate_process(EXIT_FAILURE);
+}
+
+HeadlessOptions parse_options(int argc, char** argv)
+{
+    HeadlessOptions options;
+    for(int i = 1; i < argc; ++i)
+    {
+        std::string option = argv[i];
+        if(option == "-h" || option == "--help")
+        {
+            print_usage(argv[0]);
+            terminate_process(EXIT_SUCCESS);
+        }
+
+        if(option != "--scene" && option != "--frames" && option != "--device"
+           && option != "--save-every" && option != "--save-surface-mesh")
+        {
+            std::cerr << "[ERROR] Unknown option: " << option << std::endl;
+            print_usage(argv[0]);
+            terminate_process(EXIT_FAILURE);
+        }
+        if(++i >= argc)
+        {
+            std::cerr << "[ERROR] Missing value for " << option << std::endl;
+            terminate_process(EXIT_FAILURE);
+        }
+
+        if(option == "--save-surface-mesh")
+        {
+            options.save_surface_mesh = parse_bool(option.c_str(), argv[i]);
+            continue;
+        }
+
+        int value = parse_nonnegative_int(option.c_str(), argv[i]);
+        if(option == "--scene")
+            scene_no = value;
+        else if(option == "--frames")
+            options.frames = value;
+        else if(option == "--device")
+            cuda_device = value;
+        else
+            options.save_every = value;
+    }
+    return options;
+}
+
+void prepare_output_directory(const std::filesystem::path& output_dir)
+{
+    auto normalized = std::filesystem::absolute(output_dir).lexically_normal();
+    if(normalized.filename().empty())
+        normalized = normalized.parent_path();
+    if(normalized.empty() || normalized == normalized.root_path()
+       || normalized.filename() != "Output")
+    {
+        std::cerr << "[ERROR] Refusing to clear unexpected output path: "
+                  << normalized.string() << std::endl;
+        terminate_process(EXIT_FAILURE);
+    }
+
+    std::error_code error;
+    const bool output_existed = std::filesystem::exists(normalized, error);
+    if(output_existed)
+        std::filesystem::remove_all(normalized, error);
+    if(!error)
+        std::filesystem::create_directories(normalized, error);
+    if(error)
+    {
+        std::cerr << "[ERROR] Cannot prepare output directory: " << normalized.string()
+                  << " (" << error.message() << ")" << std::endl;
+        terminate_process(EXIT_FAILURE);
+    }
+
+    std::cout << "[INFO ] Output directory ready: " << normalized.string();
+    if(output_existed)
+        std::cout << " | previous contents cleared";
+    std::cout << std::endl;
+}
+
+void update_animation()
+{
+    if(!ipc.animation)
+        return;
+
+    std::string filename =
+        "triMesh/body4/postcvpr_big_body_" + std::to_string(frameId + 1) + ".obj";
+    ++frameId;
+    tetMesh.load_animation(filename, 1, make_double3(-1, -0.5, -0.5));
+    CUDA_SAFE_CALL(cudaMemcpy(d_tetMesh.targetVert,
+                              tetMesh.targetPos.data(),
+                              tetMesh.softNum * sizeof(double3),
+                              cudaMemcpyHostToDevice));
+}
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    const HeadlessOptions options = parse_options(argc, argv);
+    const bool save_surface_mesh = options.save_surface_mesh && options.save_every > 0;
+    const auto output_dir = std::filesystem::path{gipc::output_dir()};
+    const auto surface_dir = output_dir / "saveSurface";
+
+    std::cout << "[INFO ] StiffGIPC headless simulator\n"
+              << "[INFO ] Initializing scene " << scene_no << " on CUDA device "
+              << cuda_device << std::endl;
+
+    const auto init_begin = std::chrono::steady_clock::now();
+    Init_CUDA();
+
+    cudaDeviceProp device_properties{};
+    CUDA_SAFE_CALL(cudaGetDeviceProperties(&device_properties, cuda_device));
+    std::cout << "[INFO ] GPU: " << device_properties.name << std::endl;
+
+    prepare_output_directory(output_dir);
+    if(save_surface_mesh)
+        std::filesystem::create_directories(surface_dir);
+
+    LoadSettings();
+    ipc.build_gipc_system(d_tetMesh);
+    initScene();
+
+    const int frames = options.frames >= 0 ? options.frames : num_frames;
+    const auto init_end = std::chrono::steady_clock::now();
+    const double init_seconds =
+        std::chrono::duration<double>(init_end - init_begin).count();
+
+    std::cout << std::fixed << std::setprecision(3)
+              << "[INFO ] Ready: " << ipc.vertexNum << " vertices, "
+              << ipc.tetrahedraNum << " tetrahedra, " << ipc.surface_Num << " faces"
+              << " | init " << init_seconds << " s\n"
+              << "[INFO ] Running " << frames << " frame(s)"
+              << (save_surface_mesh
+                      ? " | OBJ every " + std::to_string(options.save_every) + " frame(s)"
+                      : " | OBJ output disabled")
+              << std::endl;
+
+    const auto run_begin = std::chrono::steady_clock::now();
+    for(int frame = 1; frame <= frames; ++frame)
+    {
+        const auto frame_begin = std::chrono::steady_clock::now();
+        ipc.IPC_Solver(d_tetMesh);
+        update_animation();
+
+        bool saved = false;
+        if(save_surface_mesh && frame % options.save_every == 0)
+        {
+            CUDA_SAFE_CALL(cudaMemcpy(tetMesh.vertexes.data(),
+                                      ipc._vertexes,
+                                      ipc.vertexNum * sizeof(double3),
+                                      cudaMemcpyDeviceToHost));
+            saved = saveSurfaceMesh((surface_dir / "frame_").string(), frame);
+        }
+
+        const auto frame_end = std::chrono::steady_clock::now();
+        const double frame_seconds =
+            std::chrono::duration<double>(frame_end - frame_begin).count();
+        std::cout << std::fixed << std::setprecision(3) << "[FRAME] " << std::setw(5)
+                  << frame << "/" << frames << " | " << std::setw(8) << frame_seconds
+                  << " s";
+        if(saved)
+            std::cout << " | saved frame_" << std::setfill('0') << std::setw(5) << frame
+                      << ".obj" << std::setfill(' ');
+        std::cout << std::endl;
+    }
+
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+    const auto run_end = std::chrono::steady_clock::now();
+    const double run_seconds =
+        std::chrono::duration<double>(run_end - run_begin).count();
+    std::cout << std::fixed << std::setprecision(3) << "[DONE ] Completed " << frames
+              << " frame(s) in " << run_seconds
+              << " s | output: " << output_dir.string() << std::endl;
+    terminate_process(EXIT_SUCCESS);
+}
+#endif

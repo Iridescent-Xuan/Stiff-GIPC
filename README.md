@@ -72,6 +72,30 @@ Support platforms: Windows, Linux
 | freeglut                               | 3.4.0   | visualization                                       | package        |
 | glew                                   | 2.2.0#3 | visualization                                       | package        |
 
+FreeGLUT and GLEW are only required when building the optional graphical viewer.
+
+## Headless build and run
+
+The default build produces a command-line simulator suitable for SSH sessions. It
+does not create a window or link against OpenGL, FreeGLUT, or GLEW.
+
+```bash
+cmake -S . -B build-headless -DGIPC_HEADLESS=ON
+cmake --build build-headless -j
+./build-headless/gipc --scene 6 --frames 100 --save-every 10
+```
+
+Use `./build-headless/gipc --help` to list all options. Surface meshes are written
+to `Output/saveSurface/` by default. Use `--save-surface-mesh 0` to disable mesh
+output and `--save-every N` to change its frequency. The `Output/` directory is
+cleared at the start of every run to prevent stale results from being mixed in;
+timing and solver statistics are also written there.
+If CUDA architecture auto-detection is unavailable during configuration, pass it
+explicitly, for example `-DCMAKE_CUDA_ARCHITECTURES=89` for an RTX 4090.
+
+To build the original interactive viewer, configure with
+`-DGIPC_HEADLESS=OFF` and install the OpenGL dependencies below.
+
 ### linux
 
 We use CMake to build the project.
@@ -97,4 +121,3 @@ Copyrights are retained by the original authors.
 
 - **METIS**: https://github.com/KemengHuang/METIS (fork of https://github.com/KarypisLab/METIS)  
 - **GKlib**: https://github.com/KemengHuang/GKlib (fork of https://github.com/KarypisLab/GKlib)
-

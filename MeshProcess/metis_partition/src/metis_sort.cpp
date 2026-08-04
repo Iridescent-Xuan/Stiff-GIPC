@@ -37,7 +37,7 @@ std::vector<std::string> metis_sort(std::string obj_path, int dimension)
     std::ifstream ifs(out_file_path);
     if(ifs)
     {
-        printf("metis files exist\n");
+        std::cout << "[INIT ] METIS partition cache found" << std::endl;
         ifs.close();
         std::vector<std::string> out_paths;
         std::string sort_part_path = output_folder + mesh_name + "_sorted."

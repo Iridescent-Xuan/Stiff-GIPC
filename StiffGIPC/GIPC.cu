@@ -18,6 +18,7 @@
 #include <thrust/device_ptr.h>
 #include "FrictionUtils.cuh"
 #include <fstream>
+#include <iomanip>
 #include "Eigen/Eigen"
 #include <gipc/statistics.h>
 #include <gipc_path.h>
@@ -10877,8 +10878,7 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
                       double&           time4)
 {
     auto& stats_at_current_frame = gipc::Statistics::instance().at_current_frame();
-    std::cout << "solve_subIP >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-              << std::endl;
+    std::cout << "[SOLVE] Newton solve started" << std::endl;
 
     stats_at_current_frame["newton"] = gipc::Json::array();
 
@@ -10903,7 +10903,8 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         cudaEventCreate(&end3);
         cudaEventCreate(&end4);
 
-        //printf("\n\n\ncollision num  %d\n\n\n", h_cpNum[0]+h_gpNum);
+        std::cout << "[ITER ] Newton " << std::setw(3) << k << " | contacts "
+                  << h_cpNum[0] + h_gpNum << std::endl;
 
         cudaEventRecord(start);
         timemakePd += computeGradientAndHessian(TetMesh);
@@ -10932,8 +10933,8 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         cudaEventRecord(end0);
 
         auto cg_count = calculateMovingDirection(TetMesh, h_cpNum[0], pcg_data.P_type);
-        //std::cout << "[" << k << "]"
-        //          << "cg_count = " << cg_count << std::endl;
+        std::cout << "[ITER ] Newton " << std::setw(3) << k << " | PCG " << cg_count
+                  << std::endl;
         total_Cg_count += cg_count;
         cudaEventRecord(end1);
         double alpha = 1.0, slackness_a = 0.8, slackness_m = 0.8;
@@ -11027,7 +11028,9 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
     //    outiter << iterV[ii] << std::endl;
     //}
     //outiter.close();
-    printf("\n\n      Kappa: %f                               iteration k:  %d\n", Kappa, k);
+    std::cout << std::scientific << std::setprecision(3) << "[SOLVE] Newton iterations "
+              << k << " | kappa " << Kappa << std::defaultfloat << std::setprecision(6)
+              << std::endl;
     return k;
 }
 
@@ -11151,7 +11154,8 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
         }
 
         buildCP();
-        printf("boundary alpha: %f\n  finished a step\n", alpha);
+        std::cout << std::fixed << std::setprecision(3) << "[SOLVE] Step accepted | alpha "
+                  << alpha << std::defaultfloat << std::setprecision(6) << std::endl;
     }
 
     TetMesh.update_soft_constraint_target_position(total_Frames + 1, IPC_dt);
@@ -11257,7 +11261,9 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
     cudaEventElapsedTime(&tttime, start, end0);
     totalTime += tttime;
     total_Frames++;
-    printf("average time cost:     %f,    frame id:   %d\n", totalTime / totalNT, total_Frames);
+    std::cout << std::fixed << std::setprecision(3) << "[SOLVE] Frame " << total_Frames
+              << " | average " << totalTime / totalNT << " ms/iteration"
+              << std::defaultfloat << std::setprecision(6) << std::endl;
 
 
     ttime0 += time0;
@@ -11267,7 +11273,7 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
     ttime4 += time4;
 
 
-    std::ofstream outTime("timeCost.txt");
+    std::ofstream outTime(std::string{gipc::output_dir()} + "timeCost.txt");
 
     outTime << "time0: " << ttime0 / 1000.0 << std::endl;
     outTime << "time1: " << ttime1 / 1000.0 << std::endl;
@@ -11290,7 +11296,9 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
 
     stats.at_current_frame()["timer"] =
         gipc::GlobalTimer::current()->report_merged_as_json();
+#ifndef GIPC_HEADLESS
     gipc::GlobalTimer::current()->print_merged_timings();
+#endif
     gipc::GlobalTimer::current()->clear();
     stats.write_to_file(std::string{gipc::output_dir()} + "/stats.json");
 

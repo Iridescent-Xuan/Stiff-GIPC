@@ -1738,7 +1738,7 @@ void MASPreconditioner::computeNumLevels(int vertNum)
     }
     nLevel   = nLevel + 1;
     levelnum = nLevel > 6 ? 6 : nLevel;
-    printf("level num:  %d\n", levelnum);
+    std::cout << "[INIT ] MAS hierarchy levels: " << levelnum << std::endl;
     //totalSize = totalSz * SizeRatio;
 }
 

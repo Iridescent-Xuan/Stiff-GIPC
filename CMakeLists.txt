@@ -14,6 +14,8 @@ endif()
 
 project(StiffGIPC LANGUAGES CXX CUDA)
 
+option(GIPC_HEADLESS "Build the command-line simulator without OpenGL" ON)
+
 # generate compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -29,11 +31,14 @@ else()
     set(CMAKE_CUDA_FLAGS "")
 endif()
 find_package(Eigen3 REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(GLUT REQUIRED)
-find_package(OpenGL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+
+if(NOT GIPC_HEADLESS)
+    find_package(GLEW REQUIRED)
+    find_package(GLUT REQUIRED)
+    find_package(OpenGL REQUIRED)
+endif()
 
 # add external libraries
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
@@ -56,6 +61,10 @@ target_sources(gipc PRIVATE ${GIPC_SOURCE} ${GIPC_HANDER})
 # add assets and output directory, that we can easily access them in the code
 target_compile_definitions(gipc PRIVATE GIPC_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Assets/")
 target_compile_definitions(gipc PRIVATE GIPC_OUTPUT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Output/")
+
+if(GIPC_HEADLESS)
+    target_compile_definitions(gipc PRIVATE GIPC_HEADLESS)
+endif()
 
 target_compile_definitions(gipc PRIVATE 
 USE_SNK1 
@@ -80,8 +89,12 @@ endif()
 
 target_link_libraries(gipc PRIVATE cusparse cublas cusolver cudart_static)
 target_link_libraries(gipc PRIVATE metis_partition CUDA::cudart)
-target_link_libraries(gipc PRIVATE GLUT::GLUT GLEW::GLEW OpenGL::GLU Eigen3::Eigen)
+target_link_libraries(gipc PRIVATE Eigen3::Eigen)
 target_link_libraries(gipc PRIVATE nlohmann_json::nlohmann_json)
+
+if(NOT GIPC_HEADLESS)
+    target_link_libraries(gipc PRIVATE GLUT::GLUT GLEW::GLEW OpenGL::GLU)
+endif()
 
 if(MSVC)
     # Some external C dependencies still pull in the static CRT; gipc uses the
@@ -96,7 +109,7 @@ set_target_properties(gipc PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_RESOLVE_DEVICE_SYMBOLS ON
     CUDA_STANDARD 17
-    CUDA_ARCHITECTURES native)
+    CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
 
 target_compile_options(gipc
     PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
